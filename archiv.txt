@@ -1,0 +1,11 @@
+Header line 1
+Header line 2
+Header line 3
+Number of nodes: 4
+Header line 5
+Header line 5
+1 0.0 0.0
+2 0.0 10.0
+3 10.0 10.0
+4 10.0 0.0
+EOF
