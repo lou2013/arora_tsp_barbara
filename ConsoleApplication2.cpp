@@ -11,8 +11,7 @@
 #include <limits>
 #include "iostream"
 #include <chrono>
-#define PortalizacionH
-#define FLT_MAX     3.402823466e+38F    // max value
+#define FLT_MAX 3.402823466e+38F    // max value
 #define EERROR 5
 #define ARRIBA  0
 #define ABAJO  1
@@ -37,7 +36,7 @@
 #define HORIZONTAL 0
 #define VERTICAL 1
 #define MUSIC 0
-#define ERROR 1
+// #define ERROR 1
 #define CLICK 2
 #define ZOOMIN 3
 #define MAXANCHOIM 4000
@@ -52,13 +51,12 @@
 #define NINGUNO -1
 #define AMBOS -2
 #define CTEDIM 10000
-#define LADOS 4
-#define EERROR 5
 #define DISTANCIAINVALIDA -1
 #define TamYdefault -1
 #define TamYdefaultAll -3
 #define TamYEqual -2
 #define VALUE_DEF 0
+#include <random>
 float c=100;
 class Punto {
 protected:
@@ -1014,62 +1012,93 @@ public:
             
     }
     void perturbar() {
-        float resto, aux, dist_Min_X, dist_Min_Y, dist_Min_Media_X, dist_Min_Media_Y;
-        //se establece la longitud m�nima en cada uno de los ejes
-        dist_Min_X = this->getMinX();
-        dist_Min_Y = this->getMinY();
-        //calculo las mitades de cada una de las distancias m�nimas para reubicar los nodos
-        dist_Min_Media_X = dist_Min_X / 2.0;
-        dist_Min_Media_Y = dist_Min_Y / 2.0;
-        //recorre cada uno de los nodos y los perturba
-        for (unsigned int i = 0; i < numNodos; i++) {
-            //perturba la coordenada X
-            aux = nodosImput[i].getX() / dist_Min_X;
-            resto = aux - floor(aux);
-            if (resto < dist_Min_Media_X) //estoy mas cerca del piso del valor
-                nodosImput[i].setX(floor(aux));
-            else //estoy mas proximo al valor mayor
-                nodosImput[i].setX(ceil(aux));
-            //perturba la coordenada Y
-            aux = nodosImput[i].getY() / dist_Min_Y;
-            resto = aux - floor(aux);
-            if (resto < dist_Min_Media_Y)
-                nodosImput[i].setY(floor(aux));
-            else
-                nodosImput[i].setY(ceil(aux));
-            //regrilla las coordenadas
-            nodosImput[i].setX(nodosImput[i].getX() * 2);
-            nodosImput[i].setY(nodosImput[i].getY() * 2);
-        };
-        //una vez perturbados los nodos calculo los largos de la instancia perturbada
-        //tomo la menor de las dos distancias minimas para calcular el largo total de la nueva instancia
-        float dist_Min_Menor;
-        if (dist_Min_X < dist_Min_Y)
-            dist_Min_Menor = dist_Min_X;
-        else
-            dist_Min_Menor = dist_Min_Y;
-        largoBoundingBox = (largoBoundingBox / dist_Min_Menor) * 2 + 1;
-        //perturba minCoordX
-        aux = minCoordX / dist_Min_X;
+    float resto, aux, dist_Min_X, dist_Min_Y, dist_Min_Media_X, dist_Min_Media_Y;
+
+    // se establece la longitud mínima en cada uno de los ejes
+    dist_Min_X = this->getMinX();
+    dist_Min_Y = this->getMinY();
+
+    // ================== NEW CODE START: RANDOM SHIFT ==================
+    // Setup for random number generation (modern C++)
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<float> distribX(0.0, dist_Min_X);
+    std::uniform_real_distribution<float> distribY(0.0, dist_Min_Y);
+
+    // Generate random shifts
+    float shiftX = distribX(gen);
+    float shiftY = distribY(gen);
+
+    // Apply the random shift to all nodes before doing anything else
+    for (unsigned int i = 0; i < numNodos; i++) {
+        nodosImput[i].setX(nodosImput[i].getX() + shiftX);
+        nodosImput[i].setY(nodosImput[i].getY() + shiftY);
+    }
+    // =================== NEW CODE END: RANDOM SHIFT ====================
+
+    // calculo las mitades de cada una de las distancias mínimas para reubicar los nodos
+    dist_Min_Media_X = dist_Min_X / 2.0;
+    dist_Min_Media_Y = dist_Min_Y / 2.0;
+
+    // recorre cada uno de los nodos y los perturba
+    for (unsigned int i = 0; i < numNodos; i++) {
+        // perturba la coordenada X
+        aux = nodosImput[i].getX() / dist_Min_X;
         resto = aux - floor(aux);
         if (resto < dist_Min_Media_X) //estoy mas cerca del piso del valor
-            minCoordX = floor(aux);
+            nodosImput[i].setX(floor(aux));
         else //estoy mas proximo al valor mayor
-            minCoordX = (ceil(aux));
-        //perturba MinCoordY
-        aux = minCoordY / dist_Min_Y;
+            nodosImput[i].setX(ceil(aux));
+
+        // perturba la coordenada Y
+        aux = nodosImput[i].getY() / dist_Min_Y;
         resto = aux - floor(aux);
         if (resto < dist_Min_Media_Y)
-            minCoordY = (floor(aux));
+            nodosImput[i].setY(floor(aux));
         else
-            minCoordY = (ceil(aux));
-        minCoordX = minCoordX * 2;
-        minCoordY = minCoordY * 2;
-        this->largoEnclosingBox = getLargoEB();
-        //shift de todos los nodos de manera tal que queden en coordenadas impares
-        shiftNodos();
-        cutNodos();
+            nodosImput[i].setY(ceil(aux));
+        
+        // regrilla las coordenadas
+        nodosImput[i].setX(nodosImput[i].getX() * 2);
+        nodosImput[i].setY(nodosImput[i].getY() * 2);
     };
+    
+    // una vez perturbados los nodos calculo los largos de la instancia perturbada
+    // tomo la menor de las dos distancias minimas para calcular el largo total de la nueva instancia
+    float dist_Min_Menor;
+    if (dist_Min_X < dist_Min_Y)
+        dist_Min_Menor = dist_Min_X;
+    else
+        dist_Min_Menor = dist_Min_Y;
+    
+    largoBoundingBox = (largoBoundingBox / dist_Min_Menor) * 2 + 1;
+
+    // perturba minCoordX
+    aux = minCoordX / dist_Min_X;
+    resto = aux - floor(aux);
+    if (resto < dist_Min_Media_X) //estoy mas cerca del piso del valor
+        minCoordX = floor(aux);
+    else //estoy mas proximo al valor mayor
+        minCoordX = (ceil(aux));
+    
+    // perturba MinCoordY
+    aux = minCoordY / dist_Min_Y;
+    resto = aux - floor(aux);
+    if (resto < dist_Min_Media_Y)
+        minCoordY = (floor(aux));
+    else
+        minCoordY = (ceil(aux));
+    
+    minCoordX = minCoordX * 2;
+    minCoordY = minCoordY * 2;
+    
+    this->largoEnclosingBox = getLargoEB();
+
+    // shift de todos los nodos de manera tal que queden en coordenadas impares
+    shiftNodos();
+    cutNodos();
+};
+
     void shiftNodos() {
         for (unsigned int i = 0; i < numNodos; i++) {
             nodosImput[i].setX(nodosImput[i].getX() - minCoordX + 1.0);
