@@ -2513,9 +2513,9 @@ void execute(std::string Pathinput,bool calculateClose=false,float portal_per_ed
     end = Clock::now();
     std::vector<Punto*> tspPath;
     progD.reconstructPath(tspPath);
-    std::cout<<"path is"<<std::endl<<"start->";
+    std::cout<<std::endl<<"start\n";
     for (Punto* p : tspPath) {
-        std::cout << p->toString() <<"->";
+        std::cout << p->toString() <<"\n";
     }
     std::cout<<"finish"<<std::endl;
     Duration tiempoProg = end - start;
@@ -2529,15 +2529,35 @@ void execute(std::string Pathinput,bool calculateClose=false,float portal_per_ed
     float largo = t.getLargoCamino(calculateClose);
     std::cout << "path length was:" << largo << std::endl;
     // Output the measured times
-    std::cout << "Time for Perturbacion: " << tiempoPert.count() << " seconds\n";
-    std::cout << "Time for Portalizacion: " << tiempoPort.count() << " seconds\n";
-    std::cout << "Time for QuadTree: " << tiempoQ.count() << " seconds\n";
-    std::cout << "Time for ProgramacionDinamica: " << tiempoProg.count() << " seconds\n";
-    std::cout << "Time for Trimer: " << tiempoTrim.count() << " seconds\n";
+    // std::cout << "Time for Perturbacion: " << tiempoPert.count() << " seconds\n";
+    // std::cout << "Time for Portalizacion: " << tiempoPort.count() << " seconds\n";
+    // std::cout << "Time for QuadTree: " << tiempoQ.count() << " seconds\n";
+    // std::cout << "Time for ProgramacionDinamica: " << tiempoProg.count() << " seconds\n";
+    // std::cout << "Time for Trimer: " << tiempoTrim.count() << " seconds\n";
 }
 
-int main() {
-    std::string archivOpen="C:\\Users\\lou2013\\Desktop\\arora_tsp_barbara\\archiv.txt";
-    execute(archivOpen,true,4);
+int main(int argc, char* argv[]) {
+    if (argc < 4) {
+        std::cerr << "Usage: " << argv[0] << " <filepath> <calculateClose> <portals_per_edge>" << std::endl;
+        std::cerr << "Example: " << argv[0] << " C:/path/to/file.txt true 4" << std::endl;
+        return 1; // Return an error code
+    }
+
+    // 1. Get the file path from the first argument
+    std::string filePath = argv[1];
+
+    // 2. Get the 'calculateClose' boolean from the second argument
+    std::string closeStr = argv[2];
+    bool calculateClose = (closeStr == "true" || closeStr == "1");
+
+    // 3. Get the 'portals_per_edge' float from the third argument
+    float portalsPerEdge = std::stof(argv[3]);
+
+    // Now call your execute function with these variables
+    execute(filePath, calculateClose, portalsPerEdge);
+
     return 0;
+    // std::string archivOpen="C:\\Users\\lou2013\\Desktop\\arora_tsp_barbara\\archiv.txt";
+    // execute(archivOpen,true,4);
+    // return 0;
 }
