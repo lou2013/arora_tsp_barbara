@@ -6,11 +6,13 @@
 #include <fstream>
 #include <vector>
 #include <string>
+#include <set>
 #include <iomanip>
 #include <sstream>
 #include <limits>
 #include "iostream"
 #include <chrono>
+#include <random>
 #define FLT_MAX 3.402823466e+38F    // max value
 #define EERROR 5
 #define ARRIBA  0
@@ -56,7 +58,7 @@
 #define TamYdefaultAll -3
 #define TamYEqual -2
 #define VALUE_DEF 0
-#include <random>
+
 float c=100;
 class Punto {
 protected:
@@ -1780,6 +1782,7 @@ unsigned int QuadTreeTSP::getAdyacenteDe(unsigned int indice) {
         return indice + 2;
     if (numHijo == 4)
         return indice - 2;
+    return 0;
 }
 //---------------------------------------------------------------------------
 unsigned int QuadTreeTSP::hijoQueCompartePortal(Punto* portal, unsigned int padre) {
@@ -1817,7 +1820,7 @@ public:
     }
     ~ProgramacionDinamica();
     void execute();
-    void reconstructFromQuadrant(unsigned int qIdx, std::vector<Punto*>& path);
+    void reconstructFromQuadrant(unsigned int qIdx, unsigned int aparIdx, std::vector<Punto*>& path, std::set<unsigned int>& visitedNodes);
     void reconstructPath(std::vector<Punto*>& path);
     SubSolucion* getSubSolucion(unsigned int, unsigned int);
 };
@@ -2243,33 +2246,51 @@ SubSolucion* ProgramacionDinamica::getSubSolucion(unsigned int fila, unsigned in
 }
 
 
-void ProgramacionDinamica::reconstructFromQuadrant(unsigned int qIdx, std::vector<Punto*>& path) {
+void ProgramacionDinamica::reconstructFromQuadrant(unsigned int qIdx, unsigned int aparIdx, std::vector<Punto*>& path, std::set<unsigned int>& visitedNodes) {
     Cuadrante* quad = quadtr[qIdx];
     if (!quad) return;
 
-    unsigned int realIdx = quad->getIndiceReal();
-    SubSolucion* subsol = matriz->get(realIdx, 0);
-
-    if (!quad->hijos()) {
-        PuntoExtendido* perturbedNode = (PuntoExtendido*)quad->getNodoIn();
+    if (!quad->hijos()) { // Base Case: Leaf Node
+        PuntoExtendido* perturbedNode = quad->getNodoIn();
         if (perturbedNode) {
-            unsigned int idx = perturbedNode->getUbicacion();
-            PuntoExtendido* extPoint = perturbacion->getCloneInput()[idx];
-            Punto* point = new Punto(extPoint->getX(), extPoint->getY());
-            path.push_back(point);
+            unsigned int originalNodeIdx = perturbedNode->getUbicacion();
+            if (visitedNodes.find(originalNodeIdx) == visitedNodes.end()) {
+                PuntoExtendido* extPoint = perturbacion->getCloneInput()[originalNodeIdx];
+                Punto* point = new Punto(extPoint->getX(), extPoint->getY());
+                path.push_back(point);
+                visitedNodes.insert(originalNodeIdx);
+            }
         }
         return;
     }
 
+    // Recursive Case: Internal Node
+    unsigned int realIdx = quad->getIndiceReal();
+    SubSolucion* subsol = matriz->get(realIdx, aparIdx);
+
     Lista<unsigned int>* hijos = subsol->getHijos();
-    for (unsigned int* hijoIdx = hijos->primero(); hijoIdx != nullptr; hijoIdx = hijos->siguiente()) {
-        reconstructFromQuadrant(*hijoIdx, path);
+    Lista<unsigned int>* apareos = subsol->getApareos();
+    
+    unsigned int* apar = apareos->primero();
+    for (unsigned int* h = hijos->primero(); h != NULL; h = hijos->siguiente()) {
+        reconstructFromQuadrant(*h, *apar, path, visitedNodes);
+        apar = apareos->siguiente();
     }
 }
 
 void ProgramacionDinamica::reconstructPath(std::vector<Punto*>& path) {
-    unsigned int rootIdx = 0; // root is at position 0
-    reconstructFromQuadrant(rootIdx, path);
+    unsigned int rootIdx = 0;
+    SubSolucion* rootSol = matriz->get(0, 0);
+
+    Lista<unsigned int>* hijos = rootSol->getHijos();
+    Lista<unsigned int>* apareos = rootSol->getApareos();
+    
+    std::set<unsigned int> visitedNodes;
+    unsigned int* apar = apareos->primero();
+    for (unsigned int* h = hijos->primero(); h != NULL; h = hijos->siguiente()) {
+        reconstructFromQuadrant(*h, *apar, path, visitedNodes);
+        apar = apareos->siguiente();
+    }
 }
 
 
@@ -2478,6 +2499,25 @@ template class Lista<Cuadrante>;
 template class Lista<unsigned int>;
 template class Lista<bool>;
 
+float calculatePathLength(const std::vector<Punto*>& path, bool close) {
+    if (path.size() < 2) return 0.0;
+    
+    float res = 0;
+    for (size_t i = 0; i < path.size() - 1; ++i) {
+        if (path[i] && path[i + 1]) {
+            res += path[i]->distancia_Total_a(path[i + 1]);
+        }
+    }
+    
+    if (close) {
+        if (path.size() > 1) {
+            res += path.back()->distancia_Total_a(path.front());
+        }
+    }
+    
+    return res;
+}
+
 
 void execute(std::string Pathinput,bool calculateClose=false,float portal_per_edge=1) {
     using Clock = std::chrono::high_resolution_clock;
@@ -2515,7 +2555,7 @@ void execute(std::string Pathinput,bool calculateClose=false,float portal_per_ed
     progD.reconstructPath(tspPath);
     std::cout<<std::endl<<"start\n";
     for (Punto* p : tspPath) {
-        std::cout << p->toString() <<"\n";
+        std::cout << p->toString() <<",\n";
     }
     std::cout<<"finish"<<std::endl;
     Duration tiempoProg = end - start;
@@ -2526,7 +2566,7 @@ void execute(std::string Pathinput,bool calculateClose=false,float portal_per_ed
     end = Clock::now();
     Duration tiempoTrim = end - start;
     // std::cout << t.toString();
-    float largo = t.getLargoCamino(calculateClose);
+    float largo = calculatePathLength(tspPath,calculateClose);
     std::cout << "path length was:" << largo << std::endl;
     // Output the measured times
     // std::cout << "Time for Perturbacion: " << tiempoPert.count() << " seconds\n";
