@@ -2535,7 +2535,7 @@ void execute(std::string Pathinput,bool calculateClose=false,float portal_per_ed
     Duration tiempoPort = end - start;
     // QuadTree
     start = Clock::now();
-    QuadTreeTSP q = QuadTreeTSP(width * width, width, width, c);
+    QuadTreeTSP q = QuadTreeTSP(width, width, width, c);
     q.make(&p, &port);
     end = Clock::now();
     Duration tiempoQ = end - start;
