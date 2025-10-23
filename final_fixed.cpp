@@ -5,6 +5,7 @@
 #include <Windows.h>
 #include <fstream>
 #include <vector>
+#include <cmath>
 #include <string>
 #include <set>
 #include <iomanip>
@@ -13,6 +14,7 @@
 #include "iostream"
 #include <chrono>
 #include <random>
+#include <algorithm>
 #define FLT_MAX 3.402823466e+38F    // max value
 #define EERROR 5
 #define ARRIBA  0
@@ -710,7 +712,11 @@ public:
         portales = NULL;
         cantPortales = 0;
         Dato.nodoIn = NULL;
-    };
+    }
+    unsigned int getX() const { return X; }
+    unsigned int getY() const { return Y; }
+    unsigned int getDim() const { return largo; }
+
     ~Cuadrante() {
         //se borran cada uno de los portales que posee el cuadrante
         /*for (unsigned int i = 0; i < cantPortales; i++)
@@ -816,60 +822,69 @@ public:
         }
     }
 };
-class SubSolucion {
-private:
+
+struct SubSolucion {
     float distancia;
-    Lista<unsigned int>* hijos;
-    Lista<unsigned int>* apareos;
-    Lista<bool>* inversiones;
-public:
-    SubSolucion();
-    ~SubSolucion();
-    void addHijo(unsigned int x);
-    void addApareo(unsigned int a);
-    void setDistancia(float d) { distancia = d; };
-    Lista<unsigned int>* getHijos() { return hijos; };
-    Lista<unsigned int>* getApareos() { return apareos; };
-    Lista<bool>* getInversiones() { return inversiones; };
-    float getDistancia() { return distancia; };
-    void addInversion(bool);
+    std::vector<unsigned int> hijos;
+    std::vector<unsigned int> apareos;
+    std::vector<bool> inversiones;
+
+    SubSolucion() : distancia(DISTANCIAINVALIDA) {
+        hijos.reserve(4);
+        apareos.reserve(4);
+        inversiones.reserve(4);
+    }
+
+    void addHijo(unsigned int x) { hijos.push_back(x); }
+    void addApareo(unsigned int a) { apareos.push_back(a); }
+    void addInversion(bool inv) { inversiones.push_back(inv); }
+
+    void setDistancia(float d) { distancia = d; }
+    float getDistancia() const { return distancia; }
+
+    const std::vector<unsigned int>& getHijos() const { return hijos; }
+    const std::vector<unsigned int>& getApareos() const { return apareos; }
+    const std::vector<bool>& getInversiones() const { return inversiones; }
+
+    float getDistancia() { return distancia; }
+    // --- Legacy adapters for old Lista<T>* interface ---
+    Lista<unsigned int>* getHijosLista() const {
+        auto* l = new Lista<unsigned int>();
+        for (auto v : hijos) {
+            unsigned int* x = new unsigned int(v);
+            l->agregarFinal(x);
+        }
+        return l;
+    }
+
+    Lista<unsigned int>* getApareosLista() const {
+        auto* l = new Lista<unsigned int>();
+        for (auto v : apareos) {
+            unsigned int* x = new unsigned int(v);
+            l->agregarFinal(x);
+        }
+        return l;
+    }
+
+    Lista<bool>* getInversionesLista() const {
+        auto* l = new Lista<bool>();
+        for (auto v : inversiones) {
+            bool* b = new bool(v);
+            l->agregarFinal(b);
+        }
+        return l;
+    }
+
 };
+
 //---------------------------------------------------------------------------
-SubSolucion::SubSolucion() {
-    distancia = DISTANCIAINVALIDA;
-    apareos = new Lista<unsigned int>;
-    hijos = new Lista<unsigned int>;
-    inversiones = new Lista<bool>;
-}
 //---------------------------------------------------------------------------
-SubSolucion::~SubSolucion() {
-    delete(hijos);
-    hijos = NULL;
-    delete(apareos);
-    apareos = NULL;
-}
 //---------------------------------------------------------------------------
-void SubSolucion::addHijo(unsigned int x) {
-    unsigned int* x1 = new unsigned int;
-    *x1 = x;
-    hijos->agregarFinal(x1);
-}
 //---------------------------------------------------------------------------
-void SubSolucion::addApareo(unsigned int a) {
-    unsigned int* a1 = new unsigned int;
-    *a1 = a;
-    apareos->agregarFinal(a1);
-}
-//---------------------------------------------------------------------------
-void SubSolucion::addInversion(bool i) {
-    bool* b1 = new bool;
-    *b1 = i;
-    inversiones->agregarFinal(b1);
-}
 //---------------------------------------------------------------------------
 template <class T> class MatrizVariable {
 private:
-    T*** matriz;
+    T** matriz;
     unsigned int tamX;
     int* tamY;
     bool inicializado;
@@ -886,10 +901,11 @@ public:
     unsigned int getSizeX();
     T* get(unsigned int, unsigned int);
     void set(T*, unsigned int, unsigned int);
+    void set(const T& elem, unsigned int x, unsigned int y);
     bool posValida(unsigned int, unsigned int);
 };
 template <class T> MatrizVariable<T>::MatrizVariable(unsigned int x) {
-    matriz = new T * *[x];
+    matriz = new T * [x];
     for (unsigned int i = 0; i < x; i++)
         matriz[i] = NULL;
     tamX = x;
@@ -902,17 +918,20 @@ template <class T> unsigned int MatrizVariable<T>::getSizeX() {
 //---------------------------------------------------------------------------
 template <class T> void MatrizVariable<T>::inicColumna(unsigned int y) {
     for (unsigned int i = 0; i < this->getSizeX(); i++) {
-        matriz[i] = new T * [y];
-        for (unsigned int j = 0; j < y; j++)
-            matriz[i][j] = NULL;
-    };
+        matriz[i] = new T[y];
+        for (unsigned int j = 0; j < y; j++) {
+            matriz[i][j] = T();
+        }
+    }
     reset_TamY(y);
-}
+};
+
 //---------------------------------------------------------------------------
 template <class T> void MatrizVariable<T>::inicColumna(unsigned int col, unsigned int y) {
-    matriz[col] = new T * [y];
-    for (unsigned int j = 0; j < y; j++)
-        matriz[col][j] = NULL;
+    matriz[col] = new T[y];
+    for (unsigned int j = 0; j < y; j++) {
+        matriz[col][j] = T();
+    }
     set_TamY(col, y);
 };
 //---------------------------------------------------------------------------
@@ -932,12 +951,12 @@ template <class T> void MatrizVariable<T>::reset_TamY(unsigned int value) {
 template <class T> T* MatrizVariable<T>::get(unsigned int x, unsigned int y) {
     if (!this->posValida(x, y))
         return NULL;
-    return matriz[x][y];
+    return &matriz[x][y];
 }
 //---------------------------------------------------------------------------
 template <class T> void MatrizVariable<T>::set(T* elem, unsigned int x, unsigned int y) {
-    if (this->posValida(x, y))
-        matriz[x][y] = elem;
+    if (this->posValida(x, y) && elem != NULL)
+        matriz[x][y] = *elem;
 }
 //---------------------------------------------------------------------------
 template <class T> void MatrizVariable<T>::set_TamY(unsigned int col, unsigned int value) {
@@ -997,7 +1016,26 @@ public:
         //calculo largo del primer bounding box sin perturbar
         largoBoundingBox = getLargoBB();
         perturbar();
-    };
+    }
+    
+    // Return all perturbed nodes inside half-open box [x1,x2) x [y1,y2)
+    std::vector<PuntoExtendido*> getNodosInBoxVector(int x1, int x2, int y1, int y2) {
+    std::vector<PuntoExtendido*> out;
+    if (!nodosImput) return out;
+    const double X1 = static_cast<double>(x1);
+    const double X2 = static_cast<double>(x2);
+    const double Y1 = static_cast<double>(y1);
+    const double Y2 = static_cast<double>(y2);
+    for (unsigned int i = 0; i < numNodos; ++i) {
+        double xi = nodosImput[i].getX();
+        double yi = nodosImput[i].getY();
+        if (xi >= X1 && xi < X2 && yi >= Y1 && yi < Y2) {
+            out.push_back(&nodosImput[i]);
+        }
+    }
+    return out;
+}
+
     Perturbacion() {
         for (unsigned int i = 0; i < numNodosOrig; i++)
             delete(nodosOriginales[i]);
@@ -1014,150 +1052,68 @@ public:
             
     }
     void perturbar() {
-    float resto, aux, dist_Min_X, dist_Min_Y, dist_Min_Media_X, dist_Min_Media_Y;
-
-    // se establece la longitud mínima en cada uno de los ejes
-    dist_Min_X = this->getMinX();
-    dist_Min_Y = this->getMinY();
-
-    // ================== NEW CODE START: RANDOM SHIFT ==================
-    // Setup for random number generation (modern C++)
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> distribX(0.0, dist_Min_X);
-    std::uniform_real_distribution<float> distribY(0.0, dist_Min_Y);
-
-    // Generate random shifts
-    float shiftX = distribX(gen);
-    float shiftY = distribY(gen);
-
-    // Apply the random shift to all nodes before doing anything else
-    for (unsigned int i = 0; i < numNodos; i++) {
-        nodosImput[i].setX(nodosImput[i].getX() + shiftX);
-        nodosImput[i].setY(nodosImput[i].getY() + shiftY);
-    }
-    // =================== NEW CODE END: RANDOM SHIFT ====================
-
-    // calculo las mitades de cada una de las distancias mínimas para reubicar los nodos
-    dist_Min_Media_X = dist_Min_X / 2.0;
-    dist_Min_Media_Y = dist_Min_Y / 2.0;
-
-    // recorre cada uno de los nodos y los perturba
-    for (unsigned int i = 0; i < numNodos; i++) {
-        // perturba la coordenada X
-        aux = nodosImput[i].getX() / dist_Min_X;
-        resto = aux - floor(aux);
-        if (resto < dist_Min_Media_X) //estoy mas cerca del piso del valor
-            nodosImput[i].setX(floor(aux));
-        else //estoy mas proximo al valor mayor
-            nodosImput[i].setX(ceil(aux));
-
-        // perturba la coordenada Y
-        aux = nodosImput[i].getY() / dist_Min_Y;
-        resto = aux - floor(aux);
-        if (resto < dist_Min_Media_Y)
-            nodosImput[i].setY(floor(aux));
-        else
-            nodosImput[i].setY(ceil(aux));
-        
-        // regrilla las coordenadas
-        nodosImput[i].setX(nodosImput[i].getX() * 2);
-        nodosImput[i].setY(nodosImput[i].getY() * 2);
-    };
-    
-    // una vez perturbados los nodos calculo los largos de la instancia perturbada
-    // tomo la menor de las dos distancias minimas para calcular el largo total de la nueva instancia
-    float dist_Min_Menor;
-    if (dist_Min_X < dist_Min_Y)
-        dist_Min_Menor = dist_Min_X;
-    else
-        dist_Min_Menor = dist_Min_Y;
-    
-    largoBoundingBox = (largoBoundingBox / dist_Min_Menor) * 2 + 1;
-
-    // perturba minCoordX
-    aux = minCoordX / dist_Min_X;
-    resto = aux - floor(aux);
-    if (resto < dist_Min_Media_X) //estoy mas cerca del piso del valor
-        minCoordX = floor(aux);
-    else //estoy mas proximo al valor mayor
-        minCoordX = (ceil(aux));
-    
-    // perturba MinCoordY
-    aux = minCoordY / dist_Min_Y;
-    resto = aux - floor(aux);
-    if (resto < dist_Min_Media_Y)
-        minCoordY = (floor(aux));
-    else
-        minCoordY = (ceil(aux));
-    
-    minCoordX = minCoordX * 2;
-    minCoordY = minCoordY * 2;
-    
-    this->largoEnclosingBox = getLargoEB();
-
-    // shift de todos los nodos de manera tal que queden en coordenadas impares
+    // Pure translation + enclosing box; no quantization/scaling.
+    this->largoBoundingBox = getLargoBB();
     shiftNodos();
+    this->largoEnclosingBox = getLargoEB();
     cutNodos();
 };
 
     void shiftNodos() {
-        for (unsigned int i = 0; i < numNodos; i++) {
-            nodosImput[i].setX(nodosImput[i].getX() - minCoordX + 1.0);
-            nodosImput[i].setY(nodosImput[i].getY() - minCoordY + 1.0);
-        };
-    };
+    for (unsigned int i = 0; i < numNodos; i++) {
+        nodosImput[i].setX(nodosImput[i].getX() - minCoordX + 1.0f);
+        nodosImput[i].setY(nodosImput[i].getY() - minCoordY + 1.0f);
+    }
+};;
     void cutNodos() {
-        PuntoExtendido* nuevo = new PuntoExtendido[numNodos];
-        int indice = 0;
-        bool hayIgual = false;
-        for (unsigned int i = 0; i < numNodos - 1; i++) {
-            hayIgual = false;
-            for (unsigned int j = i + 1; hayIgual == false && j < numNodos; j++)
-                if (((int)nodosImput[i].getX() == (int)nodosImput[j].getX()) && ((int)nodosImput[i].getY() == (int)nodosImput[j].getY()))
-                    hayIgual = true;
-            if (!hayIgual)
-                nuevo[indice++] = nodosImput[i];
-        };
-        nuevo[indice] = nodosImput[numNodos - 1];
+        // Keep ONLY exact (x,y) duplicates; do not collapse points that merely share the same integer parts.
+        if (!nodosImput || numNodos == 0) return;
+        std::vector<PuntoExtendido> kept;
+        kept.reserve(numNodos);
+        for (unsigned int i = 0; i < numNodos; ++i) {
+            bool duplicate = false;
+            for (unsigned int j = 0; j < kept.size(); ++j) {
+                if (kept[j].getX() == nodosImput[i].getX() &&
+                    kept[j].getY() == nodosImput[i].getY()) {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (!duplicate) kept.push_back(nodosImput[i]);
+        }
+        if (kept.size() == numNodos) return; // nothing to change
+        PuntoExtendido* nuevo = new PuntoExtendido[kept.size()];
+        for (unsigned int k = 0; k < kept.size(); ++k) {
+            nuevo[k] = kept[k];
+        }
+        delete [] nodosImput;
         nodosImput = nuevo;
-        numNodos = indice + 1;
+        numNodos = (unsigned int)kept.size();
     };
     float getLargoBB() {
-        float minX, maxX, minY, maxY;
-        maxX = 0.0;
-        maxY = 0.0;
-        minX = FLT_MAX;
-        minY = FLT_MAX;
-        //busca la mayor distancia entre coordenadas x e y en los nodos
-        for (unsigned int i = 0; i < numNodos; i++) {
-            if (nodosImput[i].getX() > maxX)
-                maxX = nodosImput[i].getX();
-            if (nodosImput[i].getY() > maxY)
-                maxY = nodosImput[i].getY();
-            if (nodosImput[i].getX() < minX)
-                minX = nodosImput[i].getX();
-            if (nodosImput[i].getY() < minY)
-                minY = nodosImput[i].getY();
-        };
-        //setea variables globales
-        this->minCoordX = minX;
-        this->minCoordY = minY;
-        //retorna la maxima diferencia entre los minimos y maximos de una de las dos coordenadas
-        if ((maxX - minX) > (maxY - minY))
-            return maxX - minX;
-        else
-            return maxY - minY;
-    };
+    float minX = FLT_MAX, minY = FLT_MAX;
+    float maxX = 0.0f,     maxY = 0.0f;
+    for (unsigned int i = 0; i < numNodos; i++) {
+        if (nodosImput[i].getX() > maxX) maxX = nodosImput[i].getX();
+        if (nodosImput[i].getY() > maxY) maxY = nodosImput[i].getY();
+        if (nodosImput[i].getX() < minX) minX = nodosImput[i].getX();
+        if (nodosImput[i].getY() < minY) minY = nodosImput[i].getY();
+    }
+    this->minCoordX = minX;
+    this->minCoordY = minY;
+    float spanX = maxX - minX;
+    float spanY = maxY - minY;
+    float span  = (spanX > spanY) ? spanX : spanY;
+    this->largoBoundingBox = span;
+    return span;
+};;
     unsigned int getLargoEB() {
-        unsigned int aux = ceil(this->largoBoundingBox) + 1;
-        unsigned int largo = 0;
-        int exponente = 1;
-        int base = 2;
-        while (largo < aux)
-            largo = pow(base, exponente++);
-        return largo;
-    };
+    unsigned int need = (unsigned int)(std::ceil(this->largoBoundingBox) + 1.0f);
+    if (need < 1U) need = 1U;
+    unsigned int L = 1U;
+    while (L < need) L <<= 1U;
+    return (this->largoEnclosingBox = L);
+};;
     void getImput() {
         std::ifstream file;
         file.open(*this->archivo);
@@ -1226,26 +1182,28 @@ public:
     Punto* getPerturbacion() { return nodosImput; }
     PuntoExtendido** getCloneInput() { return clonedInput;}
     bool nodos(int x1, int x2, int y1, int y2) {
-        int aux = 0;
-        int finx;
-        int finy;
-        if ((x1 > this->largoBoundingBox) || (y1 > this->largoBoundingBox))
-            return false;
-        for (unsigned int i = 0; i < numNodos; i++)
-            if ((((int)nodosImput[i].getX() > x1) && ((int)nodosImput[i].getX() < x2)) && (((int)nodosImput[i].getY() > y1) && ((int)nodosImput[i].getY() < y2)))
-            {
-                aux++;
-                if (aux > 1)
-                    return true;
-            };
+        if (!nodosImput) return false;
+        const double X1 = (double)x1, X2 = (double)x2, Y1 = (double)y1, Y2 = (double)y2;
+        int count = 0;
+        for (unsigned int i = 0; i < numNodos; ++i) {
+            double xi = nodosImput[i].getX();
+            double yi = nodosImput[i].getY();
+            if (xi >= X1 && xi < X2 && yi >= Y1 && yi < Y2) {
+                if (++count > 1) return true;
+            }
+        }
         return false;
     }
     PuntoExtendido* getNodo(int x1, int x2, int y1, int y2) {
-        if ((x1 > this->largoBoundingBox) || (y1 > this->largoBoundingBox))
-            return NULL;
-        for (unsigned int i = 0; i < numNodos; i++)
-            if ((((int)nodosImput[i].getX() > x1) && ((int)nodosImput[i].getX() < x2)) && (((int)nodosImput[i].getY() > y1) && ((int)nodosImput[i].getY() < y2)))
+        if (!nodosImput) return NULL;
+        const double X1 = (double)x1, X2 = (double)x2, Y1 = (double)y1, Y2 = (double)y2;
+        for (unsigned int i = 0; i < numNodos; ++i) {
+            double xi = nodosImput[i].getX();
+            double yi = nodosImput[i].getY();
+            if (xi >= X1 && xi < X2 && yi >= Y1 && yi < Y2) {
                 return &nodosImput[i];
+            }
+        }
         return NULL;
     }
     void copyImput() {
@@ -1351,23 +1309,62 @@ Lista2<Punto>* Portalizacion::getPortales(unsigned int x, unsigned int y, unsign
 void Portalizacion::portalizar(Lista<Cuadrante>* c, Lista<Cuadrante>* h) {
     unsigned int x, y, dim;
     Lista2<Punto>* portales;
+
+    auto add_side_portals = [this](unsigned int x, unsigned int y, unsigned int dim, int dir) {
+        // Place up to `cantPortalesPorLado` evenly-spaced portals per side (excluding corners).
+        // For small `dim`, rounding may collapse some positions; `set` will dedup.
+        if (dim == 0) return;
+        const unsigned int k = cantPortalesPorLado > 0 ? cantPortalesPorLado : 1;
+        // Precompute interior coordinate offsets in [1, dim-1]
+        // Use round to spread as evenly as possible.
+        for (unsigned int i = 1; i <= k; ++i) {
+            double t = (static_cast<double>(i) / (k + 1)); // (0,1)
+            unsigned int off = static_cast<unsigned int>( (t * dim) + 0.5 ); // round
+            if (off == 0) off = 1;
+            if (off >= dim) off = dim - 1;
+            switch (dir) {
+                case ARRIBA:   // top edge: (x+off, y)
+                    this->set(x + off, y);
+                    break;
+                case IZQUIERDA: // left edge: (x, y+off)
+                    this->set(x, y + off);
+                    break;
+                case ABAJO:    // bottom edge: (x+off, y+dim)
+                    this->set(x + off, y + dim);
+                    break;
+                case DERECHA:  // right edge: (x+dim, y+off)
+                    this->set(x + dim, y + off);
+                    break;
+            }
+        }
+    };
+
+    // First pass: ensure leaves have portals; for each side, add K evenly-spaced points
     for (Cuadrante* auxH = h->primero(); auxH; auxH = h->siguiente()) {
         x = auxH->getX();
         y = auxH->getY();
         dim = auxH->getLargo();
-        //agrego los portales
-        if (!this->hayPortales(x, y, dim, ARRIBA))
-            this->set(x + (dim / 2), y);
-        if (!this->hayPortales(x, y, dim, IZQUIERDA))
-            this->set(x, y + (dim / 2));
-        if (!this->hayPortales(x, y, dim, ABAJO))
-            this->set(x + (dim / 2), y + dim);
-        if (!this->hayPortales(x, y, dim, DERECHA))
-            this->set(x + dim, y + (dim / 2));
+
+        // Only add if that side has no portals yet (shared edges will be deduped by `set` anyway).
+        if (!this->hayPortales(x, y, dim, ARRIBA))   add_side_portals(x, y, dim, ARRIBA);
+        if (!this->hayPortales(x, y, dim, IZQUIERDA)) add_side_portals(x, y, dim, IZQUIERDA);
+        if (!this->hayPortales(x, y, dim, ABAJO))    add_side_portals(x, y, dim, ABAJO);
+        if (!this->hayPortales(x, y, dim, DERECHA))  add_side_portals(x, y, dim, DERECHA);
+
         portales = this->getPortales(x, y, dim);
         auxH->setPortales(portales);
     }
+
+    // Second pass: populate portal arrays for non-leaf quadrants from the global matrix
     for (Cuadrante* auxC = c->primero(); auxC; auxC = c->siguiente()) {
+        x = auxC->getX();
+        y = auxC->getY();
+        dim = auxC->getLargo();
+        portales = this->getPortales(x, y, dim);
+        auxC->setPortales(portales);
+    }
+
+for (Cuadrante* auxC = c->primero(); auxC; auxC = c->siguiente()) {
         x = auxC->getX();
         y = auxC->getY();
         dim = auxC->getLargo();
@@ -1825,7 +1822,7 @@ public:
     SubSolucion* getSubSolucion(unsigned int, unsigned int);
 };
 //---------------------------------------------------------------------------
-ProgramacionDinamica::~ProgramacionDinamica() { delete(matriz); };
+ProgramacionDinamica::~ProgramacionDinamica() { delete(matriz); }
 //---------------------------------------------------------------------------
 void ProgramacionDinamica::execute() {
     //construye las soluciones de las hojas
@@ -1843,7 +1840,7 @@ void ProgramacionDinamica::makeHojas() {
     unsigned int cantPortales, apareos, iReal;
     float dist1, dist2;
     Punto* apar1, * apar2, * nodo;
-    SubSolucion* sb;
+    SubSolucion sb;
     apar1 = NULL;
     apar2 = NULL;
     nodo = NULL;
@@ -1855,17 +1852,17 @@ void ProgramacionDinamica::makeHojas() {
         apareos = (cantPortales * (cantPortales - 1));
         matriz->inicColumna(iReal, apareos);
         for (unsigned int i = 0; i < apareos; i++) {
-            sb = new SubSolucion();
+            sb = SubSolucion();
             c->getApareo(i, apar1, apar2);
             nodo = c->getNodoIn();
             if (apar1 && apar2 && nodo) {
                 dist1 = nodo->distancia_Total_a(apar1);
                 dist2 = nodo->distancia_Total_a(apar2);
-                sb->setDistancia(dist1 + dist2);
+                sb.setDistancia(dist1 + dist2);
             }
             else {
                 dist1 = apar1->distancia_Total_a(apar2);
-                sb->setDistancia(dist1);
+                sb.setDistancia(dist1);
             };
             matriz->set(sb, iReal, i);
         };
@@ -1877,7 +1874,7 @@ void ProgramacionDinamica::makeSolucionLevel(unsigned int level) {
     unsigned int cantPortales, apareos, iReal, hijo1, hijo2;
     float dist1, dist2, distMin, distActual;
     Punto* apar1, * apar2;
-    SubSolucion* sb;
+    SubSolucion sb;
     apar1 = NULL;
     apar2 = NULL;
     //para cada Cuadrante del nivel dado      
@@ -1889,7 +1886,7 @@ void ProgramacionDinamica::makeSolucionLevel(unsigned int level) {
             matriz->inicColumna(iReal, apareos);
             //para cada uno de sus apareos
             for (unsigned int apareo = 0; apareo < apareos; apareo++) {
-                sb = new SubSolucion();
+                sb = SubSolucion();
                 distMin = FLT_MAX;
                 distActual = 0;
                 quadtr[ind]->getApareo(apareo, apar1, apar2);
@@ -1924,11 +1921,11 @@ void ProgramacionDinamica::makeSolucionLevel(unsigned int level) {
                                 };
                             };
                             //seteo de la matriz con la min distancia obtenida
-                            sb->addHijo(hijo1);
-                            sb->addHijo(hijo2);
-                            sb->addApareo(aparMinI);
-                            sb->addApareo(aparMinII);
-                            sb->setDistancia(distMin);
+                            sb.addHijo(hijo1);
+                            sb.addHijo(hijo2);
+                            sb.addApareo(aparMinI);
+                            sb.addApareo(aparMinII);
+                            sb.setDistancia(distMin);
                             matriz->set(sb, iReal, apareo);
                         } //fin del if cualConNodos==NINGUNO
                         else { //si los otros poseen nodos o uno de ellos posee
@@ -1960,15 +1957,15 @@ void ProgramacionDinamica::makeSolucionLevel(unsigned int level) {
                                 };
                             };
                             //seteo los datos minimos encontrados en la matriz
-                            sb->addHijo(hijo1);
-                            sb->addHijo(hijo3);
-                            sb->addHijo(hijo4);
-                            sb->addHijo(hijo2);
-                            sb->addApareo(aparMinI);
-                            sb->addApareo(aparMinII);
-                            sb->addApareo(aparMinIII);
-                            sb->addApareo(aparMinIV);
-                            sb->setDistancia(distMin);
+                            sb.addHijo(hijo1);
+                            sb.addHijo(hijo3);
+                            sb.addHijo(hijo4);
+                            sb.addHijo(hijo2);
+                            sb.addApareo(aparMinI);
+                            sb.addApareo(aparMinII);
+                            sb.addApareo(aparMinIII);
+                            sb.addApareo(aparMinIV);
+                            sb.setDistancia(distMin);
                             matriz->set(sb, iReal, apareo);
                         };//fin del else cual sin nodos
                     }//fin del if adyacentes(hijo1,hijo2)
@@ -1997,13 +1994,13 @@ void ProgramacionDinamica::makeSolucionLevel(unsigned int level) {
                                 };
                             };
                             //seteo datos minimos en la matriz
-                            sb->addHijo(hijo1);
-                            sb->addHijo(hijo3);
-                            sb->addHijo(hijo2);
-                            sb->addApareo(aparMinI);
-                            sb->addApareo(aparMinII);
-                            sb->addApareo(aparMinIII);
-                            sb->setDistancia(distMin);
+                            sb.addHijo(hijo1);
+                            sb.addHijo(hijo3);
+                            sb.addHijo(hijo2);
+                            sb.addApareo(aparMinI);
+                            sb.addApareo(aparMinII);
+                            sb.addApareo(aparMinIII);
+                            sb.setDistancia(distMin);
                             matriz->set(sb, iReal, apareo);
                         } //fin del if cualConNodos==NINGUNO //Los Hijos Estan Cruzados
                         else {
@@ -2068,19 +2065,19 @@ void ProgramacionDinamica::makeSolucionLevel(unsigned int level) {
                                 };
                                 distMin += distMin2;
                                 //seteo los datos minimos encontrados en la matriz
-                                sb->addHijo(hijo1);
-                                sb->addHijo(hijo3);
-                                sb->addHijo(hijo2);
-                                sb->addHijo(hijo1);
-                                sb->addHijo(hijo4);
-                                sb->addHijo(hijo2);
-                                sb->addApareo(aparMinI);
-                                sb->addApareo(aparMinII);
-                                sb->addApareo(aparMinIII);
-                                sb->addApareo(aparMinIV);
-                                sb->addApareo(aparMinV);
-                                sb->addApareo(aparMinVI);
-                                sb->setDistancia(distMin);
+                                sb.addHijo(hijo1);
+                                sb.addHijo(hijo3);
+                                sb.addHijo(hijo2);
+                                sb.addHijo(hijo1);
+                                sb.addHijo(hijo4);
+                                sb.addHijo(hijo2);
+                                sb.addApareo(aparMinI);
+                                sb.addApareo(aparMinII);
+                                sb.addApareo(aparMinIII);
+                                sb.addApareo(aparMinIV);
+                                sb.addApareo(aparMinV);
+                                sb.addApareo(aparMinVI);
+                                sb.setDistancia(distMin);
                                 matriz->set(sb, iReal, apareo);
                             } //fin del if (cualConNodos==AMBOS) //Los Hijos Estan Cruzados
                             else { //si solo uno de los otros hijos posee nodos
@@ -2104,13 +2101,13 @@ void ProgramacionDinamica::makeSolucionLevel(unsigned int level) {
                                     };
                                 };
                                 //seteo datos minimos en la matriz
-                                sb->addHijo(hijo1);
-                                sb->addHijo(cualConNodos);
-                                sb->addHijo(hijo2);
-                                sb->addApareo(aparMinI);
-                                sb->addApareo(aparMinII);
-                                sb->addApareo(aparMinIII);
-                                sb->setDistancia(distMin);
+                                sb.addHijo(hijo1);
+                                sb.addHijo(cualConNodos);
+                                sb.addHijo(hijo2);
+                                sb.addApareo(aparMinI);
+                                sb.addApareo(aparMinII);
+                                sb.addApareo(aparMinIII);
+                                sb.setDistancia(distMin);
                                 matriz->set(sb, iReal, apareo);
                             };//fin del else (cualConNodos==AMBOS)
                         };//fin del else cualConNodos==NINGUNO
@@ -2167,17 +2164,17 @@ void ProgramacionDinamica::makeSolucionLevel(unsigned int level) {
                         };
                     };
                     //seteo los datos minimos encontrados en la matriz
-                    sb->addHijo(hijo1);
-                    sb->addHijo(hijo2);
-                    sb->addHijo(hijo3);
-                    sb->addHijo(hijo4);
-                    sb->addHijo(hijo1);
-                    sb->addApareo(aparMinI);
-                    sb->addApareo(aparMinII);
-                    sb->addApareo(aparMinIII);
-                    sb->addApareo(aparMinIV);
-                    sb->addApareo(aparMinV);
-                    sb->setDistancia(distMin);
+                    sb.addHijo(hijo1);
+                    sb.addHijo(hijo2);
+                    sb.addHijo(hijo3);
+                    sb.addHijo(hijo4);
+                    sb.addHijo(hijo1);
+                    sb.addApareo(aparMinI);
+                    sb.addApareo(aparMinII);
+                    sb.addApareo(aparMinIII);
+                    sb.addApareo(aparMinIV);
+                    sb.addApareo(aparMinV);
+                    sb.setDistancia(distMin);
                     matriz->set(sb, iReal, apareo);
                 };//fin del else hijo1!=hijo2
             };//fin del for de apareo
@@ -2185,7 +2182,8 @@ void ProgramacionDinamica::makeSolucionLevel(unsigned int level) {
     }; //fin del for de ind
 }
 void ProgramacionDinamica::makeSolucion() {
-    SubSolucion* sb = new SubSolucion();
+    auto ssb = SubSolucion();
+    SubSolucion* sb = &ssb;
     float distMin1, distMin2, distActual1, distActual2;
     distMin1 = FLT_MAX;
     distMin2 = FLT_MAX;
@@ -2246,52 +2244,155 @@ SubSolucion* ProgramacionDinamica::getSubSolucion(unsigned int fila, unsigned in
 }
 
 
-void ProgramacionDinamica::reconstructFromQuadrant(unsigned int qIdx, unsigned int aparIdx, std::vector<Punto*>& path, std::set<unsigned int>& visitedNodes) {
-    Cuadrante* quad = quadtr[qIdx];
+void ProgramacionDinamica::reconstructFromQuadrant(unsigned int qIdx, unsigned int aparIdx, std::vector<Punto*>& path, std::set<unsigned int>& visitedNodes) {    Cuadrante* quad = quadtr[qIdx];
     if (!quad) return;
 
-    if (!quad->hijos()) { // Base Case: Leaf Node
-        PuntoExtendido* perturbedNode = quad->getNodoIn();
-        if (perturbedNode) {
-            unsigned int originalNodeIdx = perturbedNode->getUbicacion();
-            if (visitedNodes.find(originalNodeIdx) == visitedNodes.end()) {
-                PuntoExtendido* extPoint = perturbacion->getCloneInput()[originalNodeIdx];
-                Punto* point = new Punto(extPoint->getX(), extPoint->getY());
-                path.push_back(point);
-                visitedNodes.insert(originalNodeIdx);
+    // Leaf: emit its single node (if any), in original coordinates
+    if (!quad->hijos()) {
+        unsigned int bx = quad->getX();
+        unsigned int by = quad->getY();
+        unsigned int dim = quad->getDim();
+        std::vector<PuntoExtendido*> pts = perturbacion->getNodosInBoxVector((int)bx, (int)(bx+dim), (int)by, (int)(by+dim));
+        if (!pts.empty()) {
+            for (auto* perturbedNode : pts) {
+                if (!perturbedNode) continue;
+                unsigned int originalNodeIdx = perturbedNode->getUbicacion();
+                if (visitedNodes.find(originalNodeIdx) == visitedNodes.end()) {
+                    PuntoExtendido* extPoint = perturbacion->getCloneInput()[originalNodeIdx];
+                    Punto* point = new Punto(extPoint->getX(), extPoint->getY());
+                    path.push_back(point);
+                    visitedNodes.insert(originalNodeIdx);
+                }
+            }
+        } else {
+            PuntoExtendido* perturbedNode = quad->getNodoIn();
+            if (perturbedNode) {
+                unsigned int originalNodeIdx = perturbedNode->getUbicacion();
+                if (visitedNodes.find(originalNodeIdx) == visitedNodes.end()) {
+                    PuntoExtendido* extPoint = perturbacion->getCloneInput()[originalNodeIdx];
+                    Punto* point = new Punto(extPoint->getX(), extPoint->getY());
+                    path.push_back(point);
+                    visitedNodes.insert(originalNodeIdx);
+                }
             }
         }
         return;
     }
 
-    // Recursive Case: Internal Node
+    // Internal: fetch the chosen subsolution at this (quad, aparIdx)
     unsigned int realIdx = quad->getIndiceReal();
     SubSolucion* subsol = matriz->get(realIdx, aparIdx);
+    if (!subsol) return;
 
-    Lista<unsigned int>* hijos = subsol->getHijos();
-    Lista<unsigned int>* apareos = subsol->getApareos();
-    
+    // Gather children + their selected apareos and decode their portal pairs, along with inversion flags
+    Lista<unsigned int>* hijos = subsol->getHijosLista();
+    Lista<unsigned int>* apareos = subsol->getApareosLista();
+    Lista<bool>* inversiones = subsol->getInversionesLista();
+
+    struct ChildInfo {
+        unsigned int idx;
+        unsigned int apar;
+        bool inv;
+        Punto* p1;
+        Punto* p2;
+        bool used;
+    };
+    std::vector<ChildInfo> kids;
     unsigned int* apar = apareos->primero();
+    bool* invp = inversiones ? inversiones->primero() : nullptr;
     for (unsigned int* h = hijos->primero(); h != NULL; h = hijos->siguiente()) {
-        reconstructFromQuadrant(*h, *apar, path, visitedNodes);
+        ChildInfo ci{};
+        ci.idx = *h;
+        ci.apar = apar ? *apar : 0;
+        ci.inv = invp ? *invp : false;
+        ci.p1 = ci.p2 = nullptr;
+        ci.used = false;
+        Cuadrante* cq = quadtr[ci.idx];
+        if (cq && cq->getCantPortales() >= 2) {
+            cq->getApareo(ci.apar, ci.p1, ci.p2);
+        }
+        kids.push_back(ci);
         apar = apareos->siguiente();
+        if (invp) invp = inversiones->siguiente();
+    }
+
+    // Decode this quad's entry/exit portals for this aparIdx (when available)
+    Punto* parentIn = nullptr;
+    Punto* parentOut = nullptr;
+    if (quad->getCantPortales() >= 2) {
+        quad->getApareo(aparIdx, parentIn, parentOut);
+    }
+
+    auto shares_portal = [](const ChildInfo& a, const ChildInfo& b) -> bool {
+        return (a.p1 && (a.p1 == b.p1 || a.p1 == b.p2)) ||
+               (a.p2 && (a.p2 == b.p1 || a.p2 == b.p2));
+    };
+
+    // Pick start child: try the one containing parentIn; fallback to first
+    int start = -1;
+    if (parentIn) {
+        for (int i = 0; i < (int)kids.size(); ++i) {
+            if ((kids[i].p1 == parentIn) || (kids[i].p2 == parentIn)) { start = i; break; }
+        }
+    }
+    if (start == -1) start = 0;
+    kids[start].used = true;
+
+    // Build an order where consecutive children share a boundary portal
+    std::vector<int> order;
+    order.reserve(kids.size());
+    order.push_back(start);
+
+    while ((int)order.size() < (int)kids.size()) {
+        int cur = order.back();
+        bool found = false;
+        for (int i = 0; i < (int)kids.size(); ++i) {
+            if (kids[i].used) continue;
+            if (shares_portal(kids[cur], kids[i])) {
+                kids[i].used = true;
+                order.push_back(i);
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            // Fallback (should be rare if DP is consistent)
+            for (int i = 0; i < (int)kids.size(); ++i) {
+                if (!kids[i].used) { kids[i].used = true; order.push_back(i); break; }
+            }
+        }
+    }
+
+    // Recurse in that order, applying inversion (reverse) of child path if required
+    for (int pos : order) {
+        std::vector<Punto*> childPath;
+        reconstructFromQuadrant(kids[pos].idx, kids[pos].apar, childPath, visitedNodes);
+        if (kids[pos].inv) {
+            std::reverse(childPath.begin(), childPath.end());
+        }
+        path.insert(path.end(), childPath.begin(), childPath.end());
     }
 }
 
 void ProgramacionDinamica::reconstructPath(std::vector<Punto*>& path) {
-    unsigned int rootIdx = 0;
-    SubSolucion* rootSol = matriz->get(0, 0);
+    std::set<unsigned int> visited;
+    const unsigned int rootIdx = 0;
 
-    Lista<unsigned int>* hijos = rootSol->getHijos();
-    Lista<unsigned int>* apareos = rootSol->getApareos();
-    
-    std::set<unsigned int> visitedNodes;
-    unsigned int* apar = apareos->primero();
-    for (unsigned int* h = hijos->primero(); h != NULL; h = hijos->siguiente()) {
-        reconstructFromQuadrant(*h, *apar, path, visitedNodes);
-        apar = apareos->siguiente();
+    // Choose the root column (apareo) with minimum DP cost
+    unsigned int bestCol = 0;
+    float bestDist = std::numeric_limits<float>::infinity();
+    const unsigned int cols = matriz->getSizeY(rootIdx);
+    for (unsigned int y = 0; y < cols; ++y) {
+        SubSolucion* ss = matriz->get(rootIdx, y);
+        if (ss && ss->getDistancia() >= 0.0f && ss->getDistancia() < bestDist) {
+            bestDist = ss->getDistancia();
+            bestCol = y;
+        }
     }
+    reconstructFromQuadrant(rootIdx, bestCol, path, visited);
 }
+
+
 
 
 //---------------------------------------------------------------------------
@@ -2417,8 +2518,8 @@ void Trimer::setMaxTamanio() {
 //---------------------------------------------------------------------------
 void Trimer::Trim() {
     SubSolucion* sb = pd->getSubSolucion(0, 0);
-    Lista<unsigned int>* hijos = sb->getHijos();
-    Lista<unsigned int>* apareos = sb->getApareos();
+    Lista<unsigned int>* hijos = sb->getHijosLista();
+    Lista<unsigned int>* apareos = sb->getApareosLista();
     unsigned int* pos = new unsigned int;
     *pos = 0;
     unsigned int* apar = apareos->primero();
@@ -2442,8 +2543,8 @@ void Trimer::Trim2(unsigned int indice, unsigned int apareo, unsigned int* posAr
     else {
         //sucesivos llamados a la recursion
         SubSolucion* sb = pd->getSubSolucion(quadtr[indice]->getIndiceReal(), apareo);
-        Lista<unsigned int>* apareos = sb->getApareos();
-        Lista<unsigned int>* hijos = sb->getHijos();
+        Lista<unsigned int>* apareos = sb->getApareosLista();
+        Lista<unsigned int>* hijos = sb->getHijosLista();
         //incorporo otros casos donde se debe invertir
         SubSolucion* sb_hijoActual;  //será la subsolucion del hijo actual
         sb_hijoActual = NULL;
@@ -2518,7 +2619,6 @@ float calculatePathLength(const std::vector<Punto*>& path, bool close) {
     return res;
 }
 
-
 void execute(std::string Pathinput,bool calculateClose=false,float portal_per_edge=1) {
     using Clock = std::chrono::high_resolution_clock;
     using Duration = std::chrono::duration<long double>;
@@ -2527,11 +2627,15 @@ void execute(std::string Pathinput,bool calculateClose=false,float portal_per_ed
     Perturbacion p = Perturbacion(&Pathinput, c);
     auto end = Clock::now();
     Duration tiempoPert = end - start;
+    std::cout << "Time for Perturbacion: " << tiempoPert.count() << " seconds\n";
     int width = p.getLargoEnclosingBox();
+    std::cout << " width: " << width << " seconds\n";
     // Portalizacion
     start = Clock::now();
     Portalizacion port = Portalizacion(width, width,portal_per_edge);
     end = Clock::now();
+    tiempoPert = end - start;
+    std::cout << "Time for Portalizacion constructor: " << tiempoPert.count() << " seconds\n";
     Duration tiempoPort = end - start;
     // QuadTree
     start = Clock::now();
@@ -2542,17 +2646,51 @@ void execute(std::string Pathinput,bool calculateClose=false,float portal_per_ed
     // Portalizacion (again)
     start = Clock::now();
     Lista<Cuadrante>* cuadrn = q.getCuadrantesPadres();
+    end = Clock::now();
+    tiempoPort = (end - start);
+    std::cout << "Time for getCuadrantesPadres: " << tiempoPort.count() << " seconds\n";
+    start = Clock::now();
     Lista<Cuadrante>* hojas = q.getHojas();
+    end = Clock::now();
+    tiempoPort = (end - start);
+    std::cout << "Time for getHojas: " << tiempoPort.count() << " seconds\n";
+    start = Clock::now();
     port.portalizar(cuadrn, hojas);
     end = Clock::now();
-    tiempoPort += (end - start);
+    tiempoPort = (end - start);
     // Programacion Dinamica
     ProgramacionDinamica progD = ProgramacionDinamica(&q,&p);
     start = Clock::now();
     progD.execute();
     end = Clock::now();
+    tiempoPort = (end - start);
+    std::cout << "Time for progD exec: " << tiempoPort.count() << " seconds\n";
+
     std::vector<Punto*> tspPath;
-    progD.reconstructPath(tspPath);
+    
+    auto build_path_for_root = [&](unsigned int rootCol, std::vector<Punto*>& out) {
+        std::set<unsigned int> visitedTmp;
+        progD.reconstructFromQuadrant(0, rootCol, out, visitedTmp);
+    };
+
+    // Sweep all root columns (apareos) and pick the one minimizing the measured length
+    tspPath.clear();
+    std::vector<Punto*> bestPathLocal;
+    float bestLen = std::numeric_limits<float>::infinity();
+    for (unsigned int y = 0;; ++y) {
+        SubSolucion* ss = progD.getSubSolucion(0, y);
+        if (!ss) break;
+        std::vector<Punto*> cand;
+        build_path_for_root(y, cand);
+        float L = calculatePathLength(cand, calculateClose); // open if false, closed if true
+        if (L < bestLen) { bestLen = L; bestPathLocal.swap(cand); }
+    }
+    if (!bestPathLocal.empty()) {
+        tspPath.swap(bestPathLocal);
+    } else {
+        progD.reconstructPath(tspPath);
+    }
+
     std::cout<<std::endl<<"start\n";
     for (Punto* p : tspPath) {
         std::cout << p->toString() <<",\n";
@@ -2598,6 +2736,10 @@ int main(int argc, char* argv[]) {
 
     // return 0;
     std::string archivOpen="C:\\Users\\lou2013\\Desktop\\arora_tsp_barbara\\archiv.txt";
-    execute(archivOpen,true,4);
+    execute(archivOpen,false,2);
     return 0;
+}
+template <class T> void MatrizVariable<T>::set(const T& elem, unsigned int x, unsigned int y) {
+    if (this->posValida(x, y))
+        matriz[x][y] = elem;
 }
